@@ -1,0 +1,1694 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>JobMatch AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+    rel="stylesheet" />
+  <style>
+    /* ── Reset & tokens ───────────────────────────────────── */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    :root {
+      --bg: #05070d;
+      --s1: #0a0f1a;
+      --s2: #0f1724;
+      --s3: #141f30;
+      --border: rgba(255, 255, 255, .07);
+      --border2: rgba(255, 255, 255, .12);
+      --blue: #3b82f6;
+      --violet: #7c3aed;
+      --cyan: #06b6d4;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --pink: #ec4899;
+      --text: #dde4f0;
+      --muted: #526075;
+      --dim: #232f42;
+      --glow-b: rgba(59, 130, 246, .14);
+      --r: 12px;
+      --ease: cubic-bezier(.4, 0, .2, 1);
+    }
+
+    html {
+      scroll-behavior: smooth;
+      color-scheme: dark
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* grid noise texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(ellipse 100% 60% at 10% -10%, rgba(59, 130, 246, .055), transparent 55%),
+        radial-gradient(ellipse 70% 50% at 95% 110%, rgba(124, 58, 237, .05), transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─────────────────────────────────────────────────────── */
+
+    /* ── LOADING SCREEN ───────────────────────────────────── */
+    #boot {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 9999;
+      transition: opacity .55s var(--ease);
+    }
+
+    #boot.gone {
+      opacity: 0;
+      pointer-events: none
+    }
+
+    .boot-logo {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -.4px;
+      background: linear-gradient(135deg, var(--text) 30%, var(--blue) 65%, var(--violet));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .boot-icon {
+      font-size: 52px;
+      animation: bob 2s ease infinite
+    }
+
+    @keyframes bob {
+
+      0%,
+      100% {
+        transform: translateY(0)
+      }
+
+      50% {
+        transform: translateY(-6px)
+      }
+    }
+
+    .boot-track {
+      width: 260px;
+      height: 3px;
+      background: var(--s3);
+      border-radius: 2px;
+      overflow: hidden
+    }
+
+    .boot-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--blue), var(--violet));
+      border-radius: 2px;
+      transition: width .35s var(--ease)
+    }
+
+    .boot-msg {
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+      max-width: 300px;
+      min-height: 18px
+    }
+
+    .boot-err {
+      color: var(--red);
+      font-size: 13px;
+      text-align: center;
+      max-width: 320px;
+      display: none
+    }
+
+    .boot-retry {
+      display: none;
+      padding: 9px 22px;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .boot-retry:hover {
+      opacity: .85
+    }
+
+    /* ── HEADER ───────────────────────────────────────────── */
+    .page {
+      position: relative;
+      z-index: 1
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 16px 0;
+      margin-bottom: 40px;
+      backdrop-filter: blur(12px);
+      background: rgba(5, 7, 13, .6);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .hdr-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none
+    }
+
+    .logo-mark {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--blue), var(--violet));
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .logo-name {
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -.3px
+    }
+
+    .logo-name em {
+      color: var(--blue);
+      font-style: normal
+    }
+
+    .hf-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--s2);
+      border: 1px solid var(--border);
+      padding: 6px 13px;
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .hf-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--amber);
+      flex-shrink: 0;
+      transition: background .3s, box-shadow .3s;
+    }
+
+    .hf-dot.live {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green)
+    }
+
+    .kpi-row {
+      display: flex;
+      gap: 20px
+    }
+
+    .kpi {
+      text-align: center
+    }
+
+    .kpi-n {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--blue);
+      font-family: 'JetBrains Mono', monospace
+    }
+
+    .kpi-l {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--muted)
+    }
+
+    /* ── LAYOUT ───────────────────────────────────────────── */
+    .wrap {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 24px
+    }
+
+    .hero {
+      margin-bottom: 40px
+    }
+
+    .hero h1 {
+      font-size: clamp(28px, 4.5vw, 48px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -.5px;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, var(--text) 20%, #7ab5ff 55%, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 15px;
+      color: var(--muted);
+      max-width: 500px
+    }
+
+    .src-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--s2);
+      border: 1px solid var(--border);
+      padding: 4px 11px;
+      border-radius: 6px;
+    }
+
+    .src-tag a {
+      color: inherit;
+      text-decoration: none
+    }
+
+    .src-tag a:hover {
+      color: var(--blue)
+    }
+
+    .app-grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 24px;
+      align-items: start
+    }
+
+    @media(max-width:860px) {
+      .app-grid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    /* ── SIDEBAR ──────────────────────────────────────────── */
+    .sidebar {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      position: sticky;
+      top: 72px;
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: .01em;
+    }
+
+    .panel-title::before {
+      content: '';
+      width: 7px;
+      height: 7px;
+      background: linear-gradient(135deg, var(--blue), var(--violet));
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .fgrp {
+      margin-bottom: 17px
+    }
+
+    .flabel {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      margin-bottom: 6px;
+    }
+
+    /* Skill input + autocomplete */
+    .sk-wrap {
+      position: relative
+    }
+
+    .sk-input {
+      width: 100%;
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      padding: 10px 13px;
+      transition: border-color .18s, box-shadow .18s;
+      outline: none;
+    }
+
+    .sk-input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px var(--glow-b)
+    }
+
+    .sk-input::placeholder {
+      color: var(--dim)
+    }
+
+    .ac-drop {
+      position: absolute;
+      top: calc(100%+5px);
+      left: 0;
+      right: 0;
+      background: var(--s2);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      z-index: 300;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, .55);
+      overflow: hidden;
+      display: none;
+    }
+
+    .ac-drop.open {
+      display: block
+    }
+
+    .ac-row {
+      padding: 9px 13px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--muted);
+      transition: background .15s, color .15s;
+    }
+
+    .ac-row:hover,
+    .ac-row.hi {
+      background: var(--glow-b);
+      color: var(--blue)
+    }
+
+    .ac-row b {
+      color: var(--blue);
+      font-weight: 600
+    }
+
+    /* Tags */
+    .tag-area {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+      min-height: 26px
+    }
+
+    .stag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(59, 130, 246, .1);
+      border: 1px solid rgba(59, 130, 246, .22);
+      color: var(--blue);
+      border-radius: 100px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      animation: tagPop .17s var(--ease);
+    }
+
+    @keyframes tagPop {
+      from {
+        opacity: 0;
+        transform: scale(.82)
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1)
+      }
+    }
+
+    .stag-x {
+      cursor: pointer;
+      opacity: .5;
+      font-size: 14px;
+      line-height: 1;
+      transition: opacity .15s, color .15s
+    }
+
+    .stag-x:hover {
+      opacity: 1;
+      color: var(--red)
+    }
+
+    /* Quick chips */
+    .quick-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px
+    }
+
+    .qchip {
+      font-size: 11px;
+      padding: 3px 10px;
+      background: var(--s3);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 100px;
+      cursor: pointer;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+
+    .qchip:hover {
+      background: var(--glow-b);
+      color: var(--blue);
+      border-color: rgba(59, 130, 246, .3)
+    }
+
+    /* Select */
+    .sel-wrap {
+      position: relative
+    }
+
+    .sel-wrap::after {
+      content: '▾';
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+      font-size: 11px;
+    }
+
+    select {
+      width: 100%;
+      background: var(--s2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      padding: 10px 13px;
+      outline: none;
+      appearance: none;
+      cursor: pointer;
+      transition: border-color .18s, box-shadow .18s;
+    }
+
+    select:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px var(--glow-b)
+    }
+
+    select option {
+      background: var(--s2)
+    }
+
+    /* Categories */
+    .cat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px
+    }
+
+    .cat-cb {
+      display: none
+    }
+
+    .cat-lbl {
+      display: block;
+      padding: 8px 11px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all .17s;
+      text-align: center;
+      color: var(--muted);
+      user-select: none;
+    }
+
+    .cat-cb:checked+.cat-lbl {
+      border-color: var(--blue);
+      background: rgba(59, 130, 246, .1);
+      color: var(--blue);
+    }
+
+    /* Range */
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 10px
+    }
+
+    input[type=range] {
+      flex: 1;
+      height: 3px;
+      appearance: none;
+      background: var(--s3);
+      border-radius: 2px;
+      outline: none;
+      padding: 0;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      background: var(--blue);
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2.5px solid var(--bg);
+    }
+
+    .range-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--blue);
+      min-width: 24px;
+      text-align: right;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 16px 0
+    }
+
+    /* ── CTA BUTTON ───────────────────────────────────────── */
+    .cta-btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--blue), var(--violet));
+      color: #fff;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: .03em;
+      box-shadow: 0 4px 18px rgba(59, 130, 246, .28);
+      transition: opacity .17s, transform .17s, box-shadow .17s;
+    }
+
+    .cta-btn:hover:not(:disabled) {
+      opacity: .88;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 28px rgba(59, 130, 246, .38)
+    }
+
+    .cta-btn:active:not(:disabled) {
+      transform: translateY(0)
+    }
+
+    .cta-btn:disabled {
+      opacity: .4;
+      cursor: not-allowed
+    }
+
+    /* ── RESULTS PANEL ────────────────────────────────────── */
+    .res-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .res-header h2 {
+      font-size: 16px;
+      font-weight: 700
+    }
+
+    .res-pill {
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--s1);
+      border: 1px solid var(--border);
+      padding: 3px 11px;
+      border-radius: 100px;
+    }
+
+    /* Sort bar */
+    .sort-bar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .sort-btn {
+      font-size: 11px;
+      padding: 5px 12px;
+      background: var(--s2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all .15s;
+      font-family: inherit;
+    }
+
+    .sort-btn.active {
+      background: var(--glow-b);
+      border-color: rgba(59, 130, 246, .35);
+      color: var(--blue)
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 64px 20px;
+      color: var(--muted)
+    }
+
+    .empty-state .ico {
+      font-size: 44px;
+      margin-bottom: 14px;
+      opacity: .4
+    }
+
+    .empty-state h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px
+    }
+
+    /* ── JOB CARD ─────────────────────────────────────────── */
+    .jcard {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 22px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .18s, transform .18s, box-shadow .18s;
+      animation: cardSlide .3s var(--ease) both;
+    }
+
+    @keyframes cardSlide {
+      from {
+        opacity: 0;
+        transform: translateY(12px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0)
+      }
+    }
+
+    .jcard::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(59, 130, 246, .04), transparent);
+      opacity: 0;
+      transition: opacity .18s;
+      pointer-events: none;
+    }
+
+    .jcard:hover {
+      border-color: rgba(59, 130, 246, .35);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, .35)
+    }
+
+    .jcard:hover::after {
+      opacity: 1
+    }
+
+    /* top stripe */
+    .jcard::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--blue), var(--violet));
+      opacity: 0;
+      transition: opacity .18s;
+    }
+
+    .jcard:hover::before {
+      opacity: 1
+    }
+
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 10px
+    }
+
+    .card-info {
+      flex: 1;
+      min-width: 0
+    }
+
+    .card-rank {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--dim);
+      letter-spacing: .08em;
+      margin-bottom: 2px
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cat-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 9px;
+      border-radius: 100px;
+      letter-spacing: .03em;
+    }
+
+    .badge-IT {
+      background: rgba(59, 130, 246, .14);
+      color: #60a5fa
+    }
+
+    .badge-HR {
+      background: rgba(16, 185, 129, .14);
+      color: #34d399
+    }
+
+    .badge-Finance {
+      background: rgba(245, 158, 11, .14);
+      color: #fbbf24
+    }
+
+    .badge-Marketing {
+      background: rgba(236, 72, 153, .14);
+      color: #f472b6
+    }
+
+    .badge-Engineering {
+      background: rgba(139, 92, 246, .14);
+      color: #a78bfa
+    }
+
+    .badge-default {
+      background: rgba(100, 116, 139, .14);
+      color: #94a3b8
+    }
+
+    /* Score donut */
+    .donut-wrap {
+      flex-shrink: 0;
+      position: relative;
+      width: 58px;
+      height: 58px
+    }
+
+    .donut-svg {
+      transform: rotate(-90deg)
+    }
+
+    .d-track {
+      fill: none;
+      stroke: var(--s3);
+      stroke-width: 4
+    }
+
+    .d-arc {
+      fill: none;
+      stroke-width: 4;
+      stroke-linecap: round;
+      transition: stroke-dashoffset .8s var(--ease)
+    }
+
+    .d-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .d-num {
+      font-size: 13px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace
+    }
+
+    .d-sub {
+      font-size: 8px;
+      color: var(--muted)
+    }
+
+    /* Skill chips */
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin: 9px 0
+    }
+
+    .chip {
+      font-size: 11px;
+      padding: 2px 9px;
+      border-radius: 100px
+    }
+
+    .chip-match {
+      background: rgba(16, 185, 129, .1);
+      color: var(--green);
+      border: 1px solid rgba(16, 185, 129, .18)
+    }
+
+    .chip-miss {
+      background: rgba(239, 68, 68, .08);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, .15)
+    }
+
+    .card-desc {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+      margin-bottom: 12px
+    }
+
+    /* Progress bar */
+    .prog-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 10px
+    }
+
+    .prog-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 3px
+    }
+
+    .prog-wrap {
+      flex: 1
+    }
+
+    .prog {
+      height: 3px;
+      background: var(--s3);
+      border-radius: 2px;
+      overflow: hidden
+    }
+
+    .prog-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width .55s var(--ease)
+    }
+
+    .detail-btn {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--blue);
+      border: 1px solid rgba(59, 130, 246, .25);
+      background: transparent;
+      border-radius: 7px;
+      padding: 5px 11px;
+      cursor: pointer;
+      transition: background .15s;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+
+    .detail-btn:hover {
+      background: var(--glow-b)
+    }
+
+    /* ── MODAL ────────────────────────────────────────────── */
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .75);
+      backdrop-filter: blur(5px);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-bg.open {
+      display: flex
+    }
+
+    .modal {
+      background: var(--s1);
+      border: 1px solid var(--border2);
+      border-radius: 18px;
+      padding: 28px;
+      max-width: 640px;
+      width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+      animation: modalPop .22s var(--ease);
+    }
+
+    @keyframes modalPop {
+      from {
+        opacity: 0;
+        transform: scale(.94) translateY(8px)
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0)
+      }
+    }
+
+    .modal-hd {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 5px
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 20px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px;
+    }
+
+    .modal-close:hover {
+      color: var(--text)
+    }
+
+    .modal-sec {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--muted);
+      margin: 14px 0 7px;
+    }
+
+    .modal-desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.65;
+      max-height: 180px;
+      overflow-y: auto
+    }
+
+    /* ── TOAST ────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--s2);
+      border: 1px solid var(--border);
+      padding: 12px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, .5);
+      z-index: 5000;
+      transform: translateY(60px);
+      opacity: 0;
+      transition: all .25s var(--ease);
+      pointer-events: none;
+    }
+
+    #toast.show {
+      transform: translateY(0);
+      opacity: 1
+    }
+
+    #toast.ok {
+      border-color: rgba(16, 185, 129, .4);
+      color: var(--green)
+    }
+
+    #toast.err {
+      border-color: rgba(239, 68, 68, .4);
+      color: var(--red)
+    }
+
+    #toast.info {
+      border-color: rgba(59, 130, 246, .4);
+      color: var(--blue)
+    }
+
+    /* ── SPINNER ──────────────────────────────────────────── */
+    .spin {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      vertical-align: middle;
+      margin-right: 7px;
+      border: 2px solid rgba(255, 255, 255, .3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spn .6s linear infinite;
+    }
+
+    @keyframes spn {
+      to {
+        transform: rotate(360deg)
+      }
+    }
+
+    /* scrollbar */
+    ::-webkit-scrollbar {
+      width: 5px
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--s3);
+      border-radius: 3px
+    }
+
+    footer {
+      text-align: center;
+      padding: 32px 0 18px;
+      color: var(--dim);
+      font-size: 11px;
+      margin-top: 48px;
+      border-top: 1px solid var(--border);
+    }
+
+    footer a {
+      color: var(--muted);
+      text-decoration: none
+    }
+
+    footer a:hover {
+      color: var(--blue)
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── BOOT LOADER ─────────────────────────────────────── -->
+  <div id="boot">
+    <div class="boot-icon">🎯</div>
+    <div class="boot-logo">JobMatch AI</div>
+    <div class="boot-track">
+      <div class="boot-fill" id="bfill"></div>
+    </div>
+    <div class="boot-msg" id="bmsg">Initializing…</div>
+    <div class="boot-err" id="berr"></div>
+    <button class="boot-retry" id="bretry" onclick="loadDataset()">↺ Retry</button>
+  </div>
+
+  <!-- ── APP ────────────────────────────────────────────── -->
+  <div class="page">
+
+    <header>
+      <div class="hdr-inner">
+        <a class="logo" href="/">
+          <div class="logo-mark">🎯</div>
+          <span class="logo-name">Job<em>Match</em> AI</span>
+        </a>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div class="hf-pill">
+            <div class="hf-dot" id="hfdot"></div>
+            <span id="hfstatus">Loading from HuggingFace…</span>
+          </div>
+          <div class="kpi-row">
+            <div class="kpi">
+              <div class="kpi-n" id="kpi-jobs">—</div>
+              <div class="kpi-l">Jobs</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-n" id="kpi-skills">—</div>
+              <div class="kpi-l">Skills</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-n" id="kpi-cats">—</div>
+              <div class="kpi-l">Fields</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <div class="hero">
+        <h1>Find Your Perfect<br />Job Match</h1>
+        <p>ML-powered recommendations using TF-IDF on 1,170 real job postings — fetched live from HuggingFace.</p>
+        <div class="src-tag">
+          🤗 &nbsp;Dataset:
+          <a href="https://huggingface.co/datasets/batuhanmtl/job-skill-set"
+            target="_blank">batuhanmtl/job-skill-set</a>
+          &nbsp;·&nbsp; Parquet API
+        </div>
+      </div>
+
+      <div class="app-grid">
+
+        <!-- ── SIDEBAR ───────────────────────────────────── -->
+        <aside class="sidebar">
+          <div class="panel-title">Your Profile</div>
+
+          <!-- Skills input -->
+          <div class="fgrp">
+            <label class="flabel">Skills</label>
+            <div class="sk-wrap">
+              <input class="sk-input" id="skin" type="text" placeholder="Type a skill, press Enter…"
+                autocomplete="off" />
+              <div class="ac-drop" id="acdrop"></div>
+            </div>
+            <div class="tag-area" id="tagarea"></div>
+            <div class="quick-row" id="quickrow">
+              <!-- populated after dataset loads -->
+            </div>
+          </div>
+
+          <!-- Experience -->
+          <div class="fgrp">
+            <label class="flabel">Experience Level</label>
+            <div class="sel-wrap">
+              <select id="expsel">
+                <option value="">Any level</option>
+                <option value="entry">Entry Level</option>
+                <option value="mid">Mid Level</option>
+                <option value="senior">Senior Level</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Categories -->
+          <div class="fgrp">
+            <label class="flabel">Fields (optional)</label>
+            <div class="cat-grid" id="catgrid">
+              <div style="color:var(--dim);font-size:12px">Loading fields…</div>
+            </div>
+          </div>
+
+          <!-- Results count -->
+          <div class="fgrp">
+            <label class="flabel">Max Results</label>
+            <div class="range-row">
+              <input type="range" id="topn" min="3" max="20" value="8"
+                oninput="document.getElementById('rnval').textContent=this.value" />
+              <span class="range-val" id="rnval">8</span>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <button class="cta-btn" id="ctabtn" disabled onclick="doSearch()">
+            🔍 &nbsp;Find Matching Jobs
+          </button>
+        </aside>
+
+        <!-- ── RESULTS ────────────────────────────────────── -->
+        <section>
+          <div class="res-header">
+            <h2>Recommendations</h2>
+            <span class="res-pill" id="respill">—</span>
+          </div>
+
+          <div class="sort-bar" id="sortbar" style="display:none">
+            <button class="sort-btn active" data-sort="score" onclick="sortCards('score',this)">↑ Relevance</button>
+            <button class="sort-btn" data-sort="match" onclick="sortCards('match',this)">↑ Skill match</button>
+            <button class="sort-btn" data-sort="title" onclick="sortCards('title',this)">A–Z Title</button>
+          </div>
+
+          <div id="resbox">
+            <div class="empty-state">
+              <div class="ico">✨</div>
+              <h3>Ready to match</h3>
+              <p>Enter your skills and hit <strong>Find Matching Jobs</strong>.</p>
+            </div>
+          </div>
+        </section>
+
+      </div><!-- app-grid -->
+    </div><!-- wrap -->
+
+    <footer>
+      <div class="wrap">
+        JobMatch AI &nbsp;·&nbsp; TF-IDF + Cosine Similarity &nbsp;·&nbsp;
+        Data: <a href="https://huggingface.co/datasets/batuhanmtl/job-skill-set"
+          target="_blank">batuhanmtl/job-skill-set</a>
+        by Batuhan Mutlu (2024) · Skill sets via RecAI APIs
+      </div>
+    </footer>
+
+  </div><!-- page -->
+
+  <!-- ── MODAL ──────────────────────────────────────────── -->
+  <div class="modal-bg" id="modalbg" onclick="maybeCloseModal(event)">
+    <div class="modal" id="modal">
+      <div class="modal-hd">
+        <div>
+          <div class="modal-title" id="modal-title"></div>
+          <span class="cat-badge" id="modal-cat"></span>
+        </div>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-sec">Job Description</div>
+      <div class="modal-desc" id="modal-desc"></div>
+      <div class="modal-sec">All Required Skills (<span id="modal-skillcount">0</span>)</div>
+      <div class="chip-row" id="modal-chips"></div>
+    </div>
+  </div>
+
+  <!-- ── TOAST ──────────────────────────────────────────── -->
+  <div id="toast"></div>
+
+  <script>
+    /* ═══════════════════════════════════════════════════════
+       CONFIG
+    ═══════════════════════════════════════════════════════ */
+    const HF_INDEX_URL = 'https://huggingface.co/api/datasets/batuhanmtl/job-skill-set/parquet/default/train';
+    const CAT_COLORS = { IT: '#60a5fa', HR: '#34d399', Finance: '#fbbf24', Marketing: '#f472b6', Engineering: '#a78bfa' };
+    const QUICK_SKILLS = ['Python', 'SQL', 'Excel', 'JavaScript', 'Machine Learning',
+      'Project Management', 'Recruiting', 'Financial Analysis', 'React', 'AWS'];
+
+    /* ═══════════════════════════════════════════════════════
+       STATE
+    ═══════════════════════════════════════════════════════ */
+    const skills = new Set();
+    let allResults = [];
+    let acItems = [], acIdx = -1;
+    let sortKey = 'score';
+
+    /* ═══════════════════════════════════════════════════════
+       BOOT — fetch HuggingFace parquet → POST to Flask ML
+    ═══════════════════════════════════════════════════════ */
+    async function loadDataset() {
+      hideBootError();
+      setProgress('Fetching parquet URL from HuggingFace API…', 8);
+      try {
+        /* 1 ── get list of parquet shard URLs from HF index */
+        const idxRes = await fetch(HF_INDEX_URL);
+        if (!idxRes.ok) throw new Error(`HuggingFace index API returned ${idxRes.status}`);
+        const urls = await idxRes.json();                    // e.g. ["https://…/0.parquet"]
+        const shards = Array.isArray(urls) ? urls : [urls];
+
+        /* 2 ── download each shard and POST to Flask for ML processing */
+        for (let i = 0; i < shards.length; i++) {
+          setProgress(
+            `Downloading shard ${i + 1}/${shards.length} from HuggingFace…`,
+            15 + Math.round((i / shards.length) * 50)
+          );
+          const dlRes = await fetch(shards[i]);
+          if (!dlRes.ok) throw new Error(`Failed to download parquet shard (HTTP ${dlRes.status})`);
+          const bytes = await dlRes.arrayBuffer();
+
+          setProgress('Python ML engine processing data…', 70 + i * 5);
+          const postRes = await fetch('/api/ingest', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'X-Shard-Index': String(i),
+              'X-Total-Shards': String(shards.length),
+            },
+            body: bytes,
+          });
+          const info = await postRes.json();
+          if (!postRes.ok) throw new Error(info.error || 'Flask ingest failed');
+
+          /* last shard → model is ready */
+          if (i === shards.length - 1) {
+            setProgress('TF-IDF model ready!', 100);
+            onReady(info);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        showBootError(err.message);
+      }
+    }
+
+    function setProgress(msg, pct) {
+      document.getElementById('bmsg').textContent = msg;
+      document.getElementById('bfill').style.width = pct + '%';
+    }
+    function showBootError(msg) {
+      document.getElementById('berr').textContent = '✗ ' + msg;
+      document.getElementById('berr').style.display = 'block';
+      document.getElementById('bretry').style.display = 'inline-block';
+      document.getElementById('bmsg').textContent = '';
+    }
+    function hideBootError() {
+      document.getElementById('berr').style.display = 'none';
+      document.getElementById('bretry').style.display = 'none';
+    }
+
+    function onReady(info) {
+      /* update header KPIs */
+      document.getElementById('kpi-jobs').textContent = info.rows.toLocaleString();
+      document.getElementById('kpi-skills').textContent = info.skills.toLocaleString();
+      document.getElementById('kpi-cats').textContent = (info.categories || []).length;
+
+      /* HF badge → live */
+      const dot = document.getElementById('hfdot');
+      dot.classList.add('live');
+      document.getElementById('hfstatus').textContent = `Live · ${info.rows.toLocaleString()} jobs`;
+
+      /* build category checkboxes */
+      buildCategories(info.categories || []);
+
+      /* quick skill chips */
+      buildQuickChips();
+
+      /* enable CTA */
+      document.getElementById('ctabtn').disabled = false;
+
+      /* dismiss loader */
+      setTimeout(() => {
+        const el = document.getElementById('boot');
+        el.classList.add('gone');
+        setTimeout(() => el.remove(), 600);
+      }, 600);
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       UI BUILDERS
+    ═══════════════════════════════════════════════════════ */
+    function buildCategories(cats) {
+      document.getElementById('catgrid').innerHTML = cats.map(c => `
+    <div>
+      <input class="cat-cb" type="checkbox" id="cat-${c}" value="${c}"/>
+      <label class="cat-lbl" for="cat-${c}">${c}</label>
+    </div>`).join('');
+    }
+
+    function buildQuickChips() {
+      const row = document.getElementById('quickrow');
+      row.innerHTML = `<span style="font-size:10px;color:var(--dim);align-self:center">Quick add:</span>` +
+        QUICK_SKILLS.map(s =>
+          `<button class="qchip" onclick="addSkill('${s.toLowerCase()}')">${s}</button>`
+        ).join('');
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       SKILL TAGS
+    ═══════════════════════════════════════════════════════ */
+    const skin = document.getElementById('skin');
+    const acdrop = document.getElementById('acdrop');
+
+    skin.addEventListener('input', async () => {
+      const q = skin.value.trim();
+      if (q.length < 2) { acdrop.classList.remove('open'); return; }
+      const res = await fetch(`/api/autocomplete?q=${encodeURIComponent(q)}`);
+      acItems = await res.json();
+      if (!acItems.length) { acdrop.classList.remove('open'); return; }
+      acdrop.innerHTML = acItems.map((s, i) =>
+        `<div class="ac-row" data-i="${i}" onclick="pickAc('${esc(s)}')">${s.replace(new RegExp(q, 'gi'), m => `<b>${m}</b>`)
+        }</div>`).join('');
+      acIdx = -1;
+      acdrop.classList.add('open');
+    });
+
+    skin.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commitInput(); }
+      else if (e.key === 'ArrowDown') { acIdx = Math.min(acIdx + 1, acItems.length - 1); hiAc(); }
+      else if (e.key === 'ArrowUp') { acIdx = Math.max(acIdx - 1, -1); hiAc(); }
+      else if (e.key === 'Escape') { acdrop.classList.remove('open'); }
+    });
+
+    function hiAc() {
+      document.querySelectorAll('.ac-row').forEach((el, i) => el.classList.toggle('hi', i === acIdx));
+      if (acIdx >= 0) skin.value = acItems[acIdx];
+    }
+
+    function pickAc(s) { skin.value = s; acdrop.classList.remove('open'); commitInput(); }
+
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.sk-wrap')) acdrop.classList.remove('open');
+    });
+
+    function commitInput() {
+      skin.value.split(',').forEach(v => addSkill(v.trim().toLowerCase()));
+      skin.value = ''; acdrop.classList.remove('open');
+    }
+
+    function addSkill(s) {
+      if (!s || skills.has(s)) return;
+      skills.add(s);
+      const tag = document.createElement('span');
+      tag.className = 'stag';
+      tag.innerHTML = `${s} <span class="stag-x" onclick="removeSkill('${esc(s)}',this.parentElement)">×</span>`;
+      document.getElementById('tagarea').appendChild(tag);
+    }
+
+    function removeSkill(s, el) { skills.delete(s); el.remove(); }
+
+    /* ═══════════════════════════════════════════════════════
+       SEARCH → Flask ML
+    ═══════════════════════════════════════════════════════ */
+    async function doSearch() {
+      if (!skills.size) { showToast('Add at least one skill first.', 'err'); return; }
+      const btn = document.getElementById('ctabtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin"></span>Searching…';
+
+      const cats = [...document.querySelectorAll('.cat-cb:checked')].map(c => c.value);
+      const payload = {
+        skills: [...skills].join(', '),
+        experience: document.getElementById('expsel').value,
+        categories: cats,
+        top_n: parseInt(document.getElementById('topn').value),
+      };
+
+      try {
+        const res = await fetch('/api/recommend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || 'Server error', 'err'); return; }
+        allResults = data.results;
+        sortKey = 'score';
+        document.querySelectorAll('.sort-btn').forEach(b => b.classList.toggle('active', b.dataset.sort === 'score'));
+        renderResults(allResults);
+        showToast(`${data.total} job${data.total !== 1 ? 's' : ''} found ✓`, 'ok');
+      } catch (e) { showToast('Network error', 'err'); }
+      finally { btn.disabled = false; btn.innerHTML = '🔍 &nbsp;Find Matching Jobs'; }
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       RENDER CARDS
+    ═══════════════════════════════════════════════════════ */
+    function renderResults(list) {
+      document.getElementById('respill').textContent = `${list.length} result${list.length !== 1 ? 's' : ''}`;
+      const sortbar = document.getElementById('sortbar');
+      const box = document.getElementById('resbox');
+
+      if (!list.length) {
+        sortbar.style.display = 'none';
+        box.innerHTML = `<div class="empty-state"><div class="ico">😕</div><h3>No matches</h3><p>Try different skills or remove filters.</p></div>`;
+        return;
+      }
+      sortbar.style.display = 'flex';
+
+      box.innerHTML = list.map((j, idx) => {
+        const sc = j.score;
+        const arc = scoreArc(sc);
+        const pct = j.match_pct;
+        const bCol = pct >= 60 ? 'var(--green)' : pct >= 30 ? 'var(--amber)' : 'var(--dim)';
+        const catCls = CAT_COLORS[j.category] ? `badge-${j.category}` : 'badge-default';
+
+        const matched = (j.matched_skills || []).slice(0, 6).map(s => `<span class="chip chip-match">✓ ${s}</span>`).join('');
+        const missing = (j.missing_skills || []).slice(0, 3).map(s => `<span class="chip chip-miss">+ ${s}</span>`).join('');
+
+        return `
+    <div class="jcard" style="animation-delay:${idx * 45}ms"
+         data-score="${sc}" data-match="${pct}" data-title="${j.job_title}"
+         data-id="${j.job_id}"
+         onclick="openModal('${esc(j.job_id)}')">
+
+      <div class="card-head">
+        <div class="card-info">
+          <div class="card-rank">#${idx + 1} MATCH</div>
+          <div class="card-title">${j.job_title}</div>
+          <span class="cat-badge ${catCls}">${j.category}</span>
+        </div>
+        ${arc}
+      </div>
+
+      <div class="chip-row">${matched}${missing}</div>
+      <p class="card-desc">${j.description}</p>
+
+      <div class="prog-row">
+        <div class="prog-wrap">
+          <div class="prog-labels">
+            <span>Skill match</span>
+            <span style="color:${bCol};font-weight:600">${pct}%</span>
+          </div>
+          <div class="prog">
+            <div class="prog-fill" style="width:${pct}%;background:${bCol}"></div>
+          </div>
+        </div>
+        <button class="detail-btn" onclick="event.stopPropagation();openModal('${esc(j.job_id)}')">Details →</button>
+      </div>
+    </div>`;
+      }).join('');
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       SORT
+    ═══════════════════════════════════════════════════════ */
+    function sortCards(key, btn) {
+      sortKey = key;
+      document.querySelectorAll('.sort-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const sorted = [...allResults].sort((a, b) => {
+        if (key === 'score') return b.score - a.score;
+        if (key === 'match') return b.match_pct - a.match_pct;
+        if (key === 'title') return a.job_title.localeCompare(b.job_title);
+        return 0;
+      });
+      renderResults(sorted);
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       SCORE DONUT (SVG)
+    ═══════════════════════════════════════════════════════ */
+    function scoreArc(sc) {
+      const R = 25, C = 2 * Math.PI * R;
+      const col = sc >= 55 ? 'var(--green)' : sc >= 30 ? 'var(--amber)' : 'var(--muted)';
+      const off = C - (sc / 100) * C;
+      return `
+  <div class="donut-wrap">
+    <svg class="donut-svg" width="58" height="58" viewBox="0 0 58 58">
+      <circle class="d-track" cx="29" cy="29" r="${R}"/>
+      <circle class="d-arc"   cx="29" cy="29" r="${R}"
+        stroke="${col}" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
+    </svg>
+    <div class="d-center">
+      <span class="d-num" style="color:${col}">${Math.round(sc)}</span>
+      <span class="d-sub">score</span>
+    </div>
+  </div>`;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       MODAL
+    ═══════════════════════════════════════════════════════ */
+    async function openModal(jobId) {
+      const res = await fetch(`/api/job/${encodeURIComponent(jobId)}`);
+      const job = await res.json();
+
+      document.getElementById('modal-title').textContent = job.job_title;
+      const catEl = document.getElementById('modal-cat');
+      catEl.textContent = job.category;
+      const catCls = CAT_COLORS[job.category] ? `badge-${job.category}` : 'badge-default';
+      catEl.className = `cat-badge ${catCls}`;
+      document.getElementById('modal-desc').textContent = job.description;
+
+      const skills = job.all_skills || [];
+      document.getElementById('modal-skillcount').textContent = skills.length;
+      document.getElementById('modal-chips').innerHTML = skills.map(s =>
+        `<span class="chip" style="background:var(--s2);border:1px solid var(--border);color:var(--muted)">${s}</span>`
+      ).join('');
+
+      document.getElementById('modalbg').classList.add('open');
+    }
+
+    function maybeCloseModal(e) { if (e.target === document.getElementById('modalbg')) closeModal(); }
+    function closeModal() { document.getElementById('modalbg').classList.remove('open'); }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+    /* ═══════════════════════════════════════════════════════
+       TOAST
+    ═══════════════════════════════════════════════════════ */
+    function showToast(msg, type = 'info') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = `show ${type}`;
+      setTimeout(() => t.className = '', 3000);
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       UTILS
+    ═══════════════════════════════════════════════════════ */
+    function esc(s) { return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+
+    /* ═══════════════════════════════════════════════════════
+       BOOT
+    ═══════════════════════════════════════════════════════ */
+    loadDataset();
+  </script>
+</body>
+
+</html>
