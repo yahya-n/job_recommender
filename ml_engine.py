@@ -1,182 +1,262 @@
 """
-ML Engine — TF-IDF + Cosine Similarity job recommender.
-Loaded once when the browser delivers the HuggingFace parquet bytes.
+ml_engine.py
+─────────────────────────────────────────────────────────────
+Training data : User-data-10000.csv   (10,000 user profiles)
+Job catalogue : jobs_data.csv          (11 job categories)
+
+Pipeline
+────────
+1. Parse hard_skill + soft_skill lists for every user row.
+2. Build a multi-label TF-IDF feature matrix over all skills.
+3. Train a Random Forest to predict `candidate_field` (job category).
+4. At query time:
+     a. Transform user's skills with the same TF-IDF.
+     b. Get per-class probabilities from the RF.
+     c. For every job category, compute a cosine-similarity bonus
+        between user skills and the job's required skills.
+     d. Blend both scores → ranked recommendation list.
 """
-import io, ast, re
-import pandas as pd
+
+import os, ast, re, logging
 import numpy as np
+import pandas as pd
+from sklearn.ensemble            import RandomForestClassifier
+from sklearn.multiclass          import OneVsRestClassifier
+from sklearn.preprocessing       import LabelEncoder
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise    import cosine_similarity
+from sklearn.model_selection     import train_test_split
+from sklearn.metrics             import classification_report, accuracy_score
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s")
+log = logging.getLogger(__name__)
+
+BASE = os.path.dirname(__file__)
 
 
-# ── Singleton ─────────────────────────────────────────────
-class MLEngine:
+# ── helpers ──────────────────────────────────────────────
+def _parse(raw) -> list[str]:
+    """Safely parse a stringified Python list of skills."""
+    if pd.isna(raw):
+        return []
+    try:
+        out = ast.literal_eval(str(raw))
+        if isinstance(out, list):
+            return [str(s).strip().lower() for s in out if str(s).strip()]
+    except Exception:
+        pass
+    return [s.strip().lower() for s in re.split(r"[,;\n|]", str(raw)) if s.strip()]
+
+
+def _skills_to_doc(hard: list, soft: list) -> str:
+    """Combine hard + soft skills into a single text document."""
+    # weight hard skills 2× by repeating them
+    return " ".join(hard * 2 + soft)
+
+
+# ═════════════════════════════════════════════════════════
+class RecommenderEngine:
     def __init__(self):
-        self.df         = None
-        self.matrix     = None
-        self.vectorizer = None
-        self.all_skills = []
+        self.rf         = None
+        self.tfidf      = None
+        self.le         = None          # LabelEncoder for candidate_field
+        self.jobs_df    = None          # job catalogue
+        self.job_vecs   = None          # TF-IDF vectors of job profiles
+        self.all_hard   = []
+        self.all_soft   = []
         self.categories = []
+        self.metrics    = {}
         self.ready      = False
 
-    # ── Ingest ────────────────────────────────────────────
-    def ingest_parquet(self, raw_bytes: bytes) -> dict:
-        df = pd.read_parquet(io.BytesIO(raw_bytes))
-        return self._load(df)
+    # ── public boot ──────────────────────────────────────
+    def train(self,
+              users_path: str = None,
+              jobs_path:  str = None) -> dict:
+        users_path = users_path or os.path.join(BASE, "User-data-10000.csv")
+        jobs_path  = jobs_path  or os.path.join(BASE, "jobs_data.csv")
 
-    def _load(self, df: pd.DataFrame) -> dict:
-        self.df = df.reset_index(drop=True)
-        self._preprocess()
-        self._fit()
+        log.info("Loading CSVs …")
+        users_df = pd.read_csv(users_path)
+        self.jobs_df = pd.read_csv(jobs_path)
+
+        log.info("Pre-processing user data …")
+        self._preprocess_users(users_df)
+
+        log.info("Pre-processing job catalogue …")
+        self._preprocess_jobs()
+
+        log.info("Fitting TF-IDF …")
+        self._fit_tfidf(users_df)
+
+        log.info("Training Random Forest classifier …")
+        self._train_rf(users_df)
+
+        log.info("Vectorising job catalogue …")
+        self._vectorise_jobs()
+
         self.ready = True
+        log.info("Engine ready ✓")
         return {
-            "rows":       len(self.df),
+            "users":      len(users_df),
+            "jobs":       len(self.jobs_df),
             "categories": self.categories,
-            "skills":     len(self.all_skills),
+            "features":   int(self.tfidf.max_features or 0),
+            "accuracy":   self.metrics.get("accuracy", 0),
         }
 
-    # ── Pre-process ───────────────────────────────────────
-    def _preprocess(self):
-        def parse_skills(raw):
-            if pd.isna(raw):
-                return []
-            try:
-                out = ast.literal_eval(str(raw))
-                if isinstance(out, list):
-                    return [s.strip().lower() for s in out if str(s).strip()]
-            except Exception:
-                pass
-            return [s.strip().lower()
-                    for s in re.split(r"[,;\n|]", str(raw)) if s.strip()]
+    # ── pre-processing ───────────────────────────────────
+    def _preprocess_users(self, df: pd.DataFrame):
+        df["_hard"] = df["hard_skill"].apply(_parse)
+        df["_soft"] = df["soft_skill"].apply(_parse)
+        df["_doc"]  = df.apply(lambda r: _skills_to_doc(r["_hard"], r["_soft"]), axis=1)
 
-        self.df["_skills"] = self.df["job_skill_set"].apply(parse_skills)
-        self.df["_skills_str"] = self.df["_skills"].apply(" ".join)
+        hard_all, soft_all = set(), set()
+        for h in df["_hard"]: hard_all.update(h)
+        for s in df["_soft"]: soft_all.update(s)
+        self.all_hard = sorted(hard_all)
+        self.all_soft = sorted(soft_all)
 
-        # combined corpus field
-        self.df["_doc"] = (
-            self.df["job_title"].fillna("") + " "
-            + self.df["category"].fillna("") + " "
-            + self.df["_skills_str"]
-        )
+        self.categories = sorted(df["candidate_field"].dropna().unique().tolist())
 
-        skill_universe: set = set()
-        for lst in self.df["_skills"]:
-            skill_universe.update(lst)
-        self.all_skills = sorted(skill_universe)
-        self.categories = sorted(self.df["category"].dropna().unique().tolist())
+    def _preprocess_jobs(self):
+        self.jobs_df["_hard"] = self.jobs_df["Hard Skills"].apply(_parse)
+        self.jobs_df["_soft"] = self.jobs_df["Soft Skills"].apply(_parse)
+        self.jobs_df["_doc"]  = self.jobs_df.apply(
+            lambda r: _skills_to_doc(r["_hard"], r["_soft"]), axis=1)
+        # normalise Major to lowercase for alignment
+        self.jobs_df["_major"] = self.jobs_df["Major"].str.lower().str.strip()
 
-    # ── Fit TF-IDF ────────────────────────────────────────
-    def _fit(self):
-        self.vectorizer = TfidfVectorizer(
+    # ── TF-IDF ───────────────────────────────────────────
+    def _fit_tfidf(self, df: pd.DataFrame):
+        self.tfidf = TfidfVectorizer(
             ngram_range=(1, 2),
-            max_features=10_000,
+            max_features=5000,
             sublinear_tf=True,
+            min_df=2,
         )
-        self.matrix = self.vectorizer.fit_transform(self.df["_doc"])
+        self.tfidf.fit(df["_doc"])
 
-    # ── Recommend ─────────────────────────────────────────
+    # ── Random Forest ────────────────────────────────────
+    def _train_rf(self, df: pd.DataFrame):
+        X = self.tfidf.transform(df["_doc"])
+        self.le = LabelEncoder()
+        y = self.le.fit_transform(df["candidate_field"])
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+
+        self.rf = RandomForestClassifier(
+            n_estimators=200,
+            max_depth=None,
+            min_samples_split=4,
+            class_weight="balanced",
+            n_jobs=-1,
+            random_state=42,
+        )
+        self.rf.fit(X_train, y_train)
+
+        y_pred = self.rf.predict(X_test)
+        acc    = accuracy_score(y_test, y_pred)
+        report = classification_report(
+            y_test, y_pred,
+            target_names=self.le.classes_,
+            output_dict=True,
+        )
+        self.metrics = {
+            "accuracy":  round(float(acc) * 100, 2),
+            "report":    report,
+            "n_train":   int(X_train.shape[0]),
+            "n_test":    int(X_test.shape[0]),
+        }
+        log.info(f"RF accuracy: {acc*100:.1f}%")
+
+    # ── Job vectors ──────────────────────────────────────
+    def _vectorise_jobs(self):
+        self.job_vecs = self.tfidf.transform(self.jobs_df["_doc"])
+
+    # ── Recommend ────────────────────────────────────────
     def recommend(
         self,
-        skills: list[str],
-        experience: str = "",
-        categories: list[str] = None,
-        top_n: int = 10,
+        hard_skills : list[str],
+        soft_skills : list[str],
+        top_n       : int = 11,
     ) -> list[dict]:
-        if not self.ready or not skills:
+        if not self.ready:
             return []
 
-        # Build query document
-        query = " ".join(s.strip().lower() for s in skills)
-        if categories:
-            query += " " + " ".join(categories) * 3   # boost weight
+        # Build user document
+        user_doc = _skills_to_doc(
+            [s.strip().lower() for s in hard_skills],
+            [s.strip().lower() for s in soft_skills],
+        )
+        user_vec = self.tfidf.transform([user_doc])
 
-        q_vec = self.vectorizer.transform([query])
-        scores = cosine_similarity(q_vec, self.matrix).flatten().copy()
+        # ── RF class probabilities ────────────────────────
+        proba      = self.rf.predict_proba(user_vec)[0]       # shape (n_classes,)
+        class_prob = {
+            self.le.classes_[i]: float(proba[i])
+            for i in range(len(self.le.classes_))
+        }
 
-        tmp = self.df.copy()
-        tmp["_score"] = scores
+        # ── Cosine similarity against job catalogue ───────
+        cos_scores = cosine_similarity(user_vec, self.job_vecs).flatten()
 
-        # ── Experience bonus ──────────────────────────────
-        SENIOR_KW = {"senior","sr","director","lead","head","chief","vp",
-                     "manager","principal","staff"}
-        JUNIOR_KW = {"junior","jr","entry","associate","intern","graduate"}
+        # ── Blend: 60% RF prob + 40% cosine ──────────────
+        user_set  = set(hard_skills + soft_skills)
+        results   = []
 
-        if experience:
-            lvl = experience.lower()
-            def exp_delta(row):
-                t = (str(row.get("job_title","")) + " " +
-                     str(row.get("job_description",""))).lower()
-                words = set(re.findall(r"[a-z]+", t))
-                if lvl == "entry":
-                    if words & JUNIOR_KW:  return  0.12
-                    if words & SENIOR_KW:  return -0.08
-                elif lvl == "mid":
-                    if words & {"senior","sr","lead"}: return 0.04
-                    if words & {"director","chief","vp"}: return -0.04
-                elif lvl == "senior":
-                    if words & SENIOR_KW:  return  0.12
-                return 0
-            tmp["_score"] += tmp.apply(exp_delta, axis=1)
+        for idx, jrow in self.jobs_df.iterrows():
+            major   = jrow["_major"]
+            rf_prob = class_prob.get(major, 0.0)
+            cos_sc  = float(cos_scores[idx])
+            blended = 0.60 * rf_prob + 0.40 * cos_sc
 
-        # ── Category boost ────────────────────────────────
-        if categories:
-            tmp.loc[tmp["category"].isin(categories), "_score"] += 0.06
-
-        # ── Rank & format ─────────────────────────────────
-        top = (tmp[tmp["_score"] > 0.005]
-               .sort_values("_score", ascending=False)
-               .head(top_n))
-
-        user_set = {s.strip().lower() for s in skills}
-        results = []
-        for _, row in top.iterrows():
-            job_skills = row["_skills"]
+            job_skills = jrow["_hard"] + jrow["_soft"]
             job_set    = set(job_skills)
             matched    = sorted(user_set & job_set)
             missing    = sorted(job_set - user_set)
-            pct        = round(len(matched) / max(len(job_set), 1) * 100)
-            desc       = str(row.get("job_description", ""))
+            match_pct  = round(len(matched) / max(len(job_set), 1) * 100)
 
             results.append({
-                "job_id":          str(row.get("job_id", "")),
-                "category":        str(row.get("category", "")),
-                "job_title":       str(row.get("job_title", "")),
-                "description":     desc[:350] + "…" if len(desc) > 350 else desc,
-                "all_skills":      job_skills,
-                "matched_skills":  matched,
-                "missing_skills":  missing[:7],
-                "match_pct":       pct,
-                "score":           round(float(row["_score"]) * 100, 1),
+                "job_id"        : int(jrow["Job ID"]),
+                "category"      : jrow["Major"],
+                "hard_skills"   : jrow["_hard"],
+                "soft_skills"   : jrow["_soft"],
+                "matched_skills": matched,
+                "missing_skills": missing[:8],
+                "match_pct"     : match_pct,
+                "rf_score"      : round(rf_prob * 100, 1),
+                "cos_score"     : round(cos_sc  * 100, 1),
+                "score"         : round(blended  * 100, 1),
             })
-        return results
 
-    # ── Helpers ───────────────────────────────────────────
-    def get_job(self, job_id: str) -> dict | None:
-        row = self.df[self.df["job_id"].astype(str) == job_id]
-        if row.empty:
-            return None
-        r = row.iloc[0]
-        return {
-            "job_id":      str(r["job_id"]),
-            "category":    str(r["category"]),
-            "job_title":   str(r["job_title"]),
-            "description": str(r.get("job_description", "")),
-            "all_skills":  r["_skills"],
-        }
+        results.sort(key=lambda r: r["score"], reverse=True)
+        return results[:top_n]
 
-    def skill_suggest(self, q: str) -> list[str]:
+    # ── Autocomplete ─────────────────────────────────────
+    def suggest_hard(self, q: str) -> list[str]:
         q = q.lower()
-        return [s for s in self.all_skills if q in s][:14]
+        return [s for s in self.all_hard if q in s][:14]
 
+    def suggest_soft(self, q: str) -> list[str]:
+        q = q.lower()
+        return [s for s in self.all_soft if q in s][:14]
+
+    # ── Stats ─────────────────────────────────────────────
     def stats(self) -> dict:
         if not self.ready:
-            return {"total_jobs": 0, "categories": {}, "total_skills": 0}
+            return {}
         return {
-            "total_jobs":   len(self.df),
-            "categories":   self.df["category"].value_counts().to_dict(),
-            "total_skills": len(self.all_skills),
+            "total_users"  : self.metrics["n_train"] + self.metrics["n_test"],
+            "total_jobs"   : len(self.jobs_df),
+            "total_hard"   : len(self.all_hard),
+            "total_soft"   : len(self.all_soft),
+            "accuracy"     : self.metrics["accuracy"],
+            "categories"   : self.categories,
+            "rf_report"    : self.metrics["report"],
         }
 
 
-# Shared singleton used by Flask
-engine = MLEngine()
+# Singleton
+engine = RecommenderEngine()

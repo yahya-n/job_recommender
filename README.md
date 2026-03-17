@@ -74,3 +74,44 @@ python app.py
 3. **Experience boosting** — ±0.12 score delta for level match  
 4. **Category boosting** — +0.06 for preferred categories  
 5. **Skill breakdown** — matched (green) and missing (red) chips per result
+
+
+
+
+
+
+
+
+-----------------
+
+# JobMatch AI — CSV-Based ML Job Recommender
+
+## Input Files
+| File | Purpose |
+|------|---------|
+| `User-data-10000.csv` | 10,000 user profiles for training (hard_skill, soft_skill, candidate_field) |
+| `jobs_data.csv` | 11 job categories with required hard/soft skills |
+
+## ML Pipeline
+1. **TF-IDF** (5,000 features, bigrams, sublinear_tf) — vectorise all user skill docs
+2. **Random Forest** (200 trees, balanced class weights) — train on 80% of user data
+3. **Evaluation** — 20% test split, per-class precision/recall/F1 report
+4. **Cosine Similarity** — compare user query against job catalogue vectors
+5. **Blend** — 60% RF probability + 40% cosine → final ranked score
+
+## Run
+```bash
+pip install -r requirements.txt
+python app.py
+# Open http://localhost:5000
+# Model trains automatically on startup (~15 seconds)
+```
+
+## API
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/status | Poll training status + KPIs |
+| POST | /api/recommend | `{hard_skills, soft_skills}` → ranked jobs |
+| GET | /api/autocomplete/hard?q=… | Hard skill suggestions |
+| GET | /api/autocomplete/soft?q=… | Soft skill suggestions |
+| GET | /api/metrics | Full classification report |
